@@ -59,3 +59,9 @@ This is a reminder/documentation file to track **key decisions**, **assumptions*
 | ML goal | Route optimization, not pavement audit |
 
 ---
+
+### 📈 What Increases Your Chance of Acceptance
+- Call your PASER score a “proxy PASER” or “PASER-like estimate” — not "PASER score" as if it's official
+- Clearly state the paper is about cycling route optimization with ML, not pavement rating per se
+- Include a Limitations section that is as honest as this conversation
+- Optionally, evaluate your method against a few expert-labeled examples if you get them — even just 10–20 helps
