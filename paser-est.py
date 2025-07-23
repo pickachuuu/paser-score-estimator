@@ -1,10 +1,8 @@
-import os
-import glob
 import pandas as pd
 import numpy as np
-from shapely.geometry import Polygon
+from pathlib import Path
 
-# Mapping of class IDs to names
+# Mapping class ids to names
 LABELS = {
     0: "Alligator crack",
     1: "Longitudinal crack",
@@ -15,99 +13,70 @@ LABELS = {
     6: "Manhole cover"
 }
 
-# Scoring weight (tunable)
+# Distress severity weights
 DISTRESS_SEVERITY_WEIGHTS = {
-    0: 5,  # Alligator crack
-    1: 3,  # Longitudinal crack
-    2: 2,  # Longitudinal patch
-    3: 5,  # Pothole
-    4: 3,  # Transverse crack
-    5: 2,  # Transverse patch
-    6: 0   # Manhole cover (ignored in PASER)
+    0: 5, 1: 3, 2: 2, 3: 5, 4: 3, 5: 2, 6: 0
 }
 
-def extract_geometry_features(coords):
-    try:
-        points = [(coords[i], coords[i+1]) for i in range(0, 8, 2)]
-        poly = Polygon(points)
-        area = poly.area
-        perimeter = poly.length
-        compactness = (perimeter ** 2) / (4 * np.pi * area) if area > 0 else 0
-        minx, miny, maxx, maxy = poly.bounds
-        width = maxx - minx
-        height = maxy - miny
-        aspect_ratio = width / height if height != 0 else 0
-        return area, aspect_ratio, compactness
-    except:
-        return 0, 0, 0
+IMG_W, IMG_H = 640, 640  # YOLOv5 default input resizing is 640×640 :contentReference[oaicite:5]{index=5}
 
-def process_label_file(file_path):
-    features = []
-    with open(file_path, 'r') as f:
-        for line in f:
-            parts = line.strip().split()
-            class_id = int(parts[0])
-            coords = list(map(float, parts[1:]))
-            area, aspect_ratio, compactness = extract_geometry_features(coords)
-            features.append({
-                'class_id': class_id,
-                'area': area,
-                'aspect_ratio': aspect_ratio,
-                'compactness': compactness
-            })
-    return features
+def bbox_area(row):
+    # Normalized to [0, 1]
+    return max(0.0, ((row['x2'] - row['x1']) * (row['y2'] - row['y1'])) / (IMG_W * IMG_H))
 
-def estimate_paser(detections):
-    if not detections:
-        return 10  # Perfect road
-
-    score = 10
-    distress_score = 0
-    distress_count = 0
-
-    for d in detections:
-        class_id = d['class_id']
-        weight = DISTRESS_SEVERITY_WEIGHTS.get(class_id, 0)
-        distress_score += weight * d['area']
-        distress_count += 1
-
-    # Normalize and convert to PASER
-    avg_score = distress_score / max(distress_count, 1)
-
-    # Heuristic mapping
-    if avg_score > 0.2:
-        return 1  # Severe distress
-    elif avg_score > 0.1:
+def heuristic_paser(avg_score):
+    if avg_score > 0.15:
+        return 1
+    elif avg_score > 0.10:
+        return 2
+    elif avg_score > 0.07:
         return 3
     elif avg_score > 0.05:
+        return 4
+    elif avg_score > 0.03:
         return 5
-    elif avg_score > 0.01:
+    elif avg_score > 0.015:
+        return 6
+    elif avg_score > 0.007:
         return 7
+    elif avg_score > 0.003:
+        return 8
     else:
         return 9
 
-def aggregate_image_features(file_path):
-    detections = process_label_file(file_path)
-    image_name = os.path.basename(file_path).replace(".txt", "")
-    paser_score = estimate_paser(detections)
+def estimate_paser(group):
+    if group.empty:
+        return 9
 
-    # Also return aggregated counts for learning use
-    agg = {'image_id': image_name, 'paser_score': paser_score}
-    for cid in LABELS:
-        relevant = [d for d in detections if d['class_id'] == cid]
-        agg[f"{LABELS[cid]}_count"] = len(relevant)
-        agg[f"{LABELS[cid]}_total_area"] = sum(d['area'] for d in relevant)
-    return agg
+    distress_score = 0.0
+    distress_count = len(group)
 
-def run_batch(input_dir, output_file="heuristic_paser_dataset.csv"):
-    results = []
-    for path in glob.glob(os.path.join(input_dir, "*.txt")):
-        row = aggregate_image_features(path)
-        results.append(row)
-    df = pd.DataFrame(results)
-    df.to_csv(output_file, index=False)
-    print(f"Saved PASER dataset: {output_file}")
-    return df
+    for _, row in group.iterrows():
+        cid = int(row['class_id'])
+        weight = DISTRESS_SEVERITY_WEIGHTS.get(cid, 0)
+        distress_score += weight * bbox_area(row)
 
-# Example usage
-# run_batch("train/labels")
+    avg_score = distress_score / distress_count
+    return heuristic_paser(avg_score)
+
+def process_csv(csv_path, output_file="heuristic_paser_dataset.csv"):
+    df = pd.read_csv(csv_path)
+    df['area'] = df.apply(bbox_area, axis=1)
+
+    rows = []
+    for image_id, group in df.groupby("image_id"):
+        paser = estimate_paser(group)
+        row = {"image_id": image_id, "paser_score": paser}
+        for cid, label in LABELS.items():
+            cls = group[group['class_id'] == cid]
+            row[f"{label}_count"] = len(cls)
+            row[f"{label}_total_area"] = cls['area'].sum()
+        rows.append(row)
+
+    out = pd.DataFrame(rows)
+    out.to_csv(output_file, index=False)
+    print(f"[✓] Saved {output_file}")
+    return out
+
+# Run the script
+process_csv("yolo_detections.csv")
