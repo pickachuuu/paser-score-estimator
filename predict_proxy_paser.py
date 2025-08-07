@@ -5,7 +5,7 @@ import numpy as np
 # 1. Load the model
 # Make sure the 'paser_regressor.joblib' file is in the same directory
 # as your Python script, or provide the full path to the file.
-loaded_model = joblib.load("paser_regressor.joblib")
+loaded_model = joblib.load("paser_gb_regressor.joblib")
 
 print("✅ Model loaded successfully!")
 
