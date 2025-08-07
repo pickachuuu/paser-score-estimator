@@ -152,3 +152,12 @@ Be sure to include these phrases or ideas:
 - "Rule-based mapping informed by PASER manual"
 - "Limitations include absence of expert-labeled PASER ground truth"
 
+📊 Random Forest Results:
+MAE:  0.0031
+RMSE: 0.0317
+R²:   0.9985
+
+📊 Gradient Boosting Results:
+MAE:  0.0021
+RMSE: 0.0331
+R²:   0.9984
