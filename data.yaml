@@ -1,0 +1,12 @@
+train: train/images
+val: valid/images
+test: test/images
+
+names: 
+  0: Alligator crack
+  1: Longitudinal crack
+  2: Longitudinal patch
+  3: Pothole
+  4: Transverse crack
+  5: Transverse patch
+  6: manhole cover
